@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -94,7 +95,8 @@ fun DeviceAppNavigation() {
 @Composable
 fun EnterpriseHomeScreen(
     navController: NavHostController,
-    viewModel: HomeViewModel = viewModel()
+//    viewModel: HomeViewModel = viewModel()
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -297,8 +299,12 @@ fun EnterpriseHomeScreen(
                             var finalUrl = urlInput.trim()
                             if (!finalUrl.endsWith("/")) finalUrl += "/"
 
+                            // ⚠️ 核心修复：真正写入 Android 设备的硬盘
+                            val sharedPrefs = context.getSharedPreferences("device_config", android.content.Context.MODE_PRIVATE)
+                            sharedPrefs.edit().putString("BASE_URL", finalUrl).apply()
+
                             showConfigDialog = false
-                            Toast.makeText(context, "配置已写入，正在重启...", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "配置已永久写入，正在重启...", Toast.LENGTH_LONG).show()
 
                             val intent = Intent(context, MainActivity::class.java)
                             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)

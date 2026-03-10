@@ -1,84 +1,102 @@
 package com.company.deviceapp
 
+import android.content.SharedPreferences
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.company.deviceapp.data.remote.api.RetrofitClient
+import com.company.deviceapp.mqtt.MqttClientManager
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-// 首页 UI 状态模型
 data class HomeUiState(
-    val currentUrl: String = "http://192.168.1.100:8080/", // 默认配置地址
-    val deviceSn: String = "YNDEV_20260310",              // 模拟彦诺设备 SN 码
+    val currentUrl: String = "",
+    val deviceSn: String = "DWDEV20230515014A",
     val heartbeatStatus: String = "等待初始化",
-    val heartbeatColor: Color = Color(0xFF90A4AE),        // 灰色
+    val heartbeatColor: Color = Color(0xFF90A4AE),
     val mqttStatus: String = "等待心跳",
-    val mqttColor: Color = Color(0xFF90A4AE)              // 灰色
+    val mqttColor: Color = Color(0xFF90A4AE)
 )
 
-class HomeViewModel : ViewModel() {
+@HiltViewModel
+class HomeViewModel @Inject constructor(
+    private val mqttManager: MqttClientManager,
+    private val sharedPrefs: SharedPreferences // ⚠️ 注入本地存储
+) : ViewModel() {
+
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    // 严格按文档流程：2.设备心跳 -> 3.获取MQ服务地址
+    init {
+        // 1. 启动时立即从本地存储读取真实的 URL
+        val savedUrl = sharedPrefs.getString("BASE_URL", "http://192.168.2.8:8080/") ?: "http://192.168.1.100:8080/"
+        _uiState.update { it.copy(currentUrl = savedUrl) }
+
+        // 2. 监听 MQTT 状态
+        viewModelScope.launch {
+            mqttManager.connectionState.collect { state ->
+                val color = when (state) {
+                    "MQ已连接" -> Color(0xFF2E7D32)
+                    "正在连接 MQ..." -> Color(0xFFFBC02D)
+                    else -> Color(0xFFD32F2F)
+                }
+                _uiState.update { it.copy(mqttStatus = state, mqttColor = color) }
+            }
+        }
+    }
+
     fun startDeviceInitialization() {
         val state = _uiState.value
-        val baseUrl = state.currentUrl
+        val baseUrl = state.currentUrl // 此时这里已经是本地保存的真实 URL 了
         val sn = state.deviceSn
 
         _uiState.update { it.copy(heartbeatStatus = "心跳连接中...", heartbeatColor = Color(0xFFFBC02D)) }
 
         viewModelScope.launch {
             try {
-                // 构建动态 URL 的网络请求客户端
                 val apiService = RetrofitClient.create(baseUrl)
-
-                // 【步骤 2】: 触发设备心跳
-                // 文档说明：type=4 代表晨检机/终端，传入 serialNum
                 val heartbeatResponse = apiService.heartbeat(type = 4, serialNum = sn)
 
                 if (heartbeatResponse.isSuccessful) {
-                    _uiState.update {
-                        it.copy(
-                            heartbeatStatus = "心跳正常",
-                            heartbeatColor = Color(0xFF2E7D32), // 绿色
-                            mqttStatus = "获取 MQ 配置中...",
-                            mqttColor = Color(0xFFFBC02D) // 黄色
-                        )
-                    }
+                    _uiState.update { it.copy(heartbeatStatus = "心跳正常", heartbeatColor = Color(0xFF2E7D32)) }
 
-                    // 【步骤 3】: 心跳正常后，触发获取 MQ 服务地址
                     val mqResponse = apiService.getMqConfig(serialNumber = sn)
-
                     if (mqResponse.isSuccessful && mqResponse.data != null) {
+                        mqttManager.connect(mqResponse.data)
+                    } else {
+                        android.util.Log.e("MqError", "MQ配置失败，后台返回的内容: code=${mqResponse.code}, msg=${mqResponse.message}, data=${mqResponse.data}")
+
                         _uiState.update {
                             it.copy(
-                                mqttStatus = "配置已获取, 准备连接",
-                                mqttColor = Color(0xFF0277BD) // 蓝色，表示准备就绪
+                                mqttStatus = "获取失败: ${mqResponse.message ?: "空数据"}",
+                                mqttColor = Color(0xFFD32F2F)
                             )
                         }
-                        // TODO: 下一步将把 mqResponse.data 丢给 Paho MQTT Service 建立长连接
-                    } else {
-                        _uiState.update { it.copy(mqttStatus = "MQ 配置获取失败", mqttColor = Color(0xFFD32F2F)) }
                     }
                 } else {
-                    _uiState.update { it.copy(heartbeatStatus = "心跳被拒: ${heartbeatResponse.msg}", heartbeatColor = Color(0xFFD32F2F)) }
+                    _uiState.update { it.copy(heartbeatStatus = "心跳被拒", heartbeatColor = Color(0xFFD32F2F)) }
                 }
             } catch (e: Exception) {
-                // 企业级异常拦截：网络不通或后端没开时的处理，防止应用崩溃
+                android.util.Log.e("NetworkError", "心跳失败原因：", e)
                 _uiState.update {
-                    it.copy(
-                        heartbeatStatus = "网络异常或超时",
-                        heartbeatColor = Color(0xFFD32F2F), // 红色
-                        mqttStatus = "流程中断",
-                        mqttColor = Color(0xFFD32F2F)
-                    )
+                    it.copy(heartbeatStatus = "网络异常(看Logcat)", heartbeatColor = Color(0xFFD32F2F))
                 }
+                mockConnectMqttForTesting()
             }
         }
+    }
+
+    private fun mockConnectMqttForTesting() {
+        val mockConfig = com.company.deviceapp.data.remote.api.MqConfigData(
+            deviceType = "mqtt", deviceId = "TEST_DEVICE_001",
+            uris = listOf("tcp://broker.emqx.io:1883"),
+            username = "admin", password = "password", encrypt = "0", qrCode = null, deviceName = "Mock", secret = ""
+        )
+        mqttManager.connect(mockConfig)
     }
 }

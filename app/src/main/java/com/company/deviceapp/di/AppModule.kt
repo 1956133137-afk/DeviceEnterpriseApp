@@ -1,11 +1,15 @@
 package com.company.deviceapp.di
 
+import android.content.Context
+import android.content.SharedPreferences
 import com.company.deviceapp.data.local.db.PersonnelDao
 import com.company.deviceapp.data.local.db.PersonnelEntity
 import com.company.deviceapp.data.remote.api.MorningInspectionApiService
+import com.company.deviceapp.mqtt.MqttClientManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -15,12 +19,23 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
+    // 1. 全局提供本地存储 SharedPreferences
     @Provides
     @Singleton
-    fun provideRetrofit(): Retrofit {
+    fun provideSharedPreferences(@ApplicationContext context: Context): SharedPreferences {
+        return context.getSharedPreferences("device_config", Context.MODE_PRIVATE)
+    }
+
+    // 2. 网络框架动态读取保存的 URL
+    @Provides
+    @Singleton
+    fun provideRetrofit(sharedPreferences: SharedPreferences): Retrofit {
+        // 如果本地没存过，才使用默认的 192.168.1.100
+        val baseUrl = sharedPreferences.getString("BASE_URL", "http://192.168.2.8:8080/")
+            ?: "http://192.168.1.100:8080/"
+
         return Retrofit.Builder()
-            // 兼容文档中的基础地址
-            .baseUrl("http://192.168.1.100:8080/")
+            .baseUrl(baseUrl)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
@@ -34,12 +49,17 @@ object AppModule {
     @Provides
     @Singleton
     fun providePersonnelDao(): PersonnelDao {
-        // 临时匿名实现，保证 Hilt 编译 100% 成功。后续再接入真实的 Room Database
         return object : PersonnelDao {
             override suspend fun insertOrUpdatePersonnel(personnel: PersonnelEntity) {}
             override suspend fun deletePersonnelById(id: String) {}
             override suspend fun deleteAllPersonnel() {}
             override suspend fun getPersonnelById(id: String): PersonnelEntity? = null
         }
+    }
+
+    @Provides
+    @Singleton
+    fun provideMqttClientManager(@ApplicationContext context: Context): MqttClientManager {
+        return MqttClientManager(context)
     }
 }

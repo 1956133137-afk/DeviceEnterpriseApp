@@ -5,7 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview as CameraXPreview // 核心防报错：取别名防止与 Compose Preview 冲突
+import androidx.camera.core.Preview as CameraXPreview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -33,15 +33,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.hilt.navigation.compose.hiltViewModel // Hilt ViewModel 注入
+import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun InspectionScreen(
     onBack: () -> Unit,
-    viewModel: InspectionViewModel = hiltViewModel() // 真正挂载 ViewModel
+    viewModel: InspectionViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     // 企业级动态请求硬件摄像头权限
     var hasCameraPermission by remember { mutableStateOf(false) }
@@ -87,7 +90,7 @@ fun InspectionScreen(
                         Text("请正视摄像头进行人脸捕获", fontSize = 32.sp, color = Color.White)
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = { viewModel.onFaceRecognized("1", "DEVICE_SN") },
+                            onClick = { viewModel.onFaceRecognized("390", "TEST_DEVICE_001") },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
                         ) { Text("模拟：人脸识别成功", fontSize = 24.sp) }
                     }
@@ -96,6 +99,7 @@ fun InspectionScreen(
                     }
                     InspectionStep.SUBMITTING -> {
                         CircularProgressIndicator(color = Color(0xFF00E676))
+                        Spacer(modifier = Modifier.height(16.dp))
                         Text("正在上报晨检记录...", fontSize = 28.sp, color = Color.White)
                     }
                     else -> {}
@@ -150,26 +154,61 @@ fun InspectionScreen(
                 Text("今日晨检问卷：", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 这里渲染 viewModel 中获取到的问卷数据
+                // 渲染问卷数据
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(uiState.questionnaires) { question ->
-                        // 此处可以拆分单个问卷组件，暂用文本代替占位
-                        Text(text = "${question.questionTitle}", fontSize = 26.sp)
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(24.dp)) {
+                                Row {
+                                    if (question.isRequired) Text("* ", color = Color.Red, fontSize = 28.sp)
+                                    Text(question.questionTitle, fontSize = 28.sp, color = Color(0xFF37474F))
+                                }
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                                    question.answerList.forEach { option ->
+                                        val isSelected = uiState.answers[question.id] == option.id
+                                        Box(
+                                            modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (isSelected) Color(0xFFE0F2F1) else Color(0xFFF5F5F5))
+                                                .border(width = 2.dp, color = if (isSelected) Color(0xFF00796B) else Color.Transparent, shape = RoundedCornerShape(12.dp))
+                                                .clickable { viewModel.selectAnswer(question.id, option.id) }.padding(horizontal = 24.dp, vertical = 16.dp)
+                                        ) {
+                                            Text(text = option.optionText, fontSize = 24.sp, color = if (isSelected) Color(0xFF00796B) else Color(0xFF78909C), fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                // 核心修复处：补全回调参数
                 Button(
                     onClick = {
-                        viewModel.submitInspection()
-                        Toast.makeText(context, "晨检提交成功", Toast.LENGTH_SHORT).show()
-                        viewModel.resetToNextPerson()
+                        viewModel.submitInspection(
+                            onSuccess = {
+                                coroutineScope.launch {
+                                    Toast.makeText(context, "晨检提交成功", Toast.LENGTH_SHORT).show()
+                                    delay(1000)
+                                    viewModel.resetToNextPerson()
+                                }
+                            },
+                            onError = { errorMsg ->
+                                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                            }
+                        )
                     },
                     modifier = Modifier.fillMaxWidth().height(100.dp),
                     shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00796B))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00796B)),
+                    enabled = uiState.currentStep == InspectionStep.DOING_INSPECTION
                 ) {
                     Text("完成体温与手部检测，提交晨检", fontSize = 32.sp, fontWeight = FontWeight.Bold)
                 }
@@ -178,7 +217,6 @@ fun InspectionScreen(
     }
 }
 
-// 调用 CameraX 硬件的底层代码
 @Composable
 fun HardwareCameraPreview(modifier: Modifier = Modifier) {
     val lifecycleOwner = LocalLifecycleOwner.current

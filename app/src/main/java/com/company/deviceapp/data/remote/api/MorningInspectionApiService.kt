@@ -11,44 +11,44 @@ import retrofit2.http.Query
 
 interface MorningInspectionApiService {
 
-    // 1. 获取上架的问卷调查
+    // 3.3 获取上架的问卷调查
     @GET("/system/group/device/active-group")
     suspend fun getActiveQuestionnaires(
         @Query("deviceSn") deviceSn: String
     ): ApiResponse<List<QuestionnaireDto>>
 
-    // 2. 获取当天最近的一条晨检记录
+    // 3.5 获取当天最近的一条晨检记录
     @GET("/inspectionRecord/getLastRecord")
     suspend fun getLastRecord(
         @Query("personId") personId: String
     ): ApiResponse<InspectionRecordDto>
 
-    // 3. 晨检记录上传 (严格按照 V1.0.4 multipart/form-data 规范)
+    // 3.4 晨检记录上传 (严格遵循 multipart/form-data)
     @Multipart
     @POST("/uploadInspectionRecord")
     suspend fun uploadInspectionRecord(
-        @Part faceImg: MultipartBody.Part,
-        @Part handImg1: MultipartBody.Part,
-        @Part handImg2: MultipartBody.Part,
+        @Part faceImg: MultipartBody.Part?,      // 非必填
+        @Part handImg1: MultipartBody.Part,      // 必传
+        @Part handImg2: MultipartBody.Part,      // 必传
         @Part("memberUserId") memberUserId: RequestBody,
         @Part("inspectionTime") inspectionTime: RequestBody,
         @Part("temperature") temperature: RequestBody,
-        @Part("identifyType") identifyType: RequestBody,       // 1:人脸 2:掌纹 3:IC卡
-        @Part("openDoor") openDoor: RequestBody,               // 1:开门 2:未开门
-        @Part("handType") handType: RequestBody,               // 1:正常 2:异常
-        @Part("healthCertificate") healthCertificate: RequestBody, // 1:正常 2:过期
-        @Part("tempType") tempType: RequestBody,               // 1:正常 2:异常
-        @Part("status") status: RequestBody,                   // 1:正常 2:异常
+        @Part("identifyType") identifyType: RequestBody,
+        @Part("openDoor") openDoor: RequestBody,
+        @Part("handType") handType: RequestBody,
+        @Part("healthCertificate") healthCertificate: RequestBody,
+        @Part("tempType") tempType: RequestBody,
+        @Part("status") status: RequestBody,
         @Part("username") username: RequestBody,
         @Part("inspectionDesc") inspectionDesc: RequestBody,
-        @Part("sn") sn: RequestBody,                           // V1.0.3 新增设备序列号
-        @Part("surveyAnswers") surveyAnswers: RequestBody?     // V1.0.4 新增问卷JSON数组
+        @Part("sn") sn: RequestBody,
+        @Part("surveyAnswers") surveyAnswers: RequestBody?
     ): ApiResponse<Any>
 }
 
-// 问卷 DTO (对应文档数据结构)
+// --- 对应 3.3 问卷响应体 ---
 data class QuestionnaireDto(
-    val id: Long,
+    val id: String, // 文档为 long/string，统一用 String
     val questionTitle: String,
     val isRequired: Boolean,
     val orderNum: Int?,
@@ -56,25 +56,27 @@ data class QuestionnaireDto(
 )
 
 data class AnswerOptionDto(
-    val id: Long,
+    val id: String,
     val optionText: String,
     val orderNum: Int?,
     val isOtherOption: Boolean
 )
 
-// 晨检记录 DTO (对应文档数据结构)
+// --- 对应 3.5 最近记录响应体 ---
 data class InspectionRecordDto(
-    val id: String,
-    val memberuserId: String,
-    val username: String,
-    val status: String,
-    val temperature: String,
-    val inspectionDesc: String,
-    val surveyAnswers: List<SurveyAnswerDto>?
-)
-
-data class SurveyAnswerDto(
-    val questionTitle: String,
-    val optionText: String,
-    val customAnswer: String?
+    val id: String?,
+    val memberUserId: String?,
+    val username: String?,
+    val identifyType: String?,
+    val tempType: String?,
+    val temperature: String?,
+    val handType: String?,
+    val faceImg: String?,
+    val handImg1: String?,
+    val handImg2: String?,
+    val healthCertificate: String?,
+    val openDoor: String?,
+    val status: String?,
+    val inspectionTime: String?,
+    val inspectionDesc: String?
 )

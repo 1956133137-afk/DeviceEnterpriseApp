@@ -80,6 +80,10 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
 
 
+    // Eclipse Paho MQTT 纯 Java 版 (比 Android Service 版更稳定，完美兼容新版 Android)
+    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
+
+
     // Navigation
     implementation(libs.androidx.navigation.compose)
 

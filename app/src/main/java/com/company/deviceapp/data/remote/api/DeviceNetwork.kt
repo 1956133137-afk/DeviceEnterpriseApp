@@ -9,19 +9,16 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Query
 
-// ==========================================
-// 1. 设备初始化相关的 API 接口
-// ==========================================
 interface DeviceApiService {
 
-    // 流程 2：设备心跳 (严格对应文档 GET 请求与参数)
+    // 3.2 设备心跳 (严格对齐文档参数 type, serialNum)
     @GET("/cabinet/findDeviceInfo")
     suspend fun heartbeat(
         @Query("type") type: Int,
         @Query("serialNum") serialNum: String
     ): ApiResponse<HeartbeatData>
 
-    // 流程 3：获取 MQ 服务地址 (严格对应文档 POST 表单请求)
+    // 3.1 获取MQ服务地址 (严格对齐 /deviceIot/... 和 serialNumber)
     @FormUrlEncoded
     @POST("/deviceIot/getDeviceIdBySerialNumber")
     suspend fun getMqConfig(
@@ -29,38 +26,35 @@ interface DeviceApiService {
     ): ApiResponse<MqConfigData>
 }
 
-// ==========================================
-// 2. 接口返回的数据实体类 (严格对照文档 JSON)
-// ==========================================
+// 严格对齐 3.2 响应字段
 data class HeartbeatData(
-    val deviceType: String,
-    val deviceName: String,
-    val deviceId: String,
-    val autoupdate: String,
-    val companyName: String
+    val deviceType: String?,
+    val deviceName: String?,
+    val deviceId: String?,
+    val deviceAddress: String?,
+    val autoUpdate: String?,
+    val companyName: String?
 )
 
+// 严格对齐 3.1 响应字段
 data class MqConfigData(
-    val deviceType: String,
-    val deviceId: String,
-    val uris: List<String>,
-    val username: String,
-    val password: String,
-    val encrypt: String,
+    val deviceType: String?,
+    val deviceId: String?,
+    val uris: List<String>?,
+    val username: String?,
+    val password: String?,
+    val encrypt: String?,
     val qrCode: String?,
-    val deviceName: String,
-    val secret: String
+    val deviceName: String?,
+    val secret: String?
 )
 
-// ==========================================
-// 3. 企业级网络客户端工厂 (快速构建 Retrofit)
-// ==========================================
 object RetrofitClient {
     fun create(baseUrl: String): DeviceApiService {
-        val retrofit = Retrofit.Builder()
+        return Retrofit.Builder()
             .baseUrl(baseUrl)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-        return retrofit.create(DeviceApiService::class.java)
+            .create(DeviceApiService::class.java)
     }
 }
