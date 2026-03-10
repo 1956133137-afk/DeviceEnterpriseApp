@@ -19,6 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DeviceEnterpriseApp"
+rootProject.name = "YannuoSmartCanteen"
 include(":app")
- 
