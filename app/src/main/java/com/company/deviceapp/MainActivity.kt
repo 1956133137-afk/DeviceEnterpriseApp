@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.viewmodel.compose.viewModel // 用于获取 ViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -44,7 +45,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // --- 核心：商显设备沉浸式全屏配置 ---
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
         windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFFECEFF1) // 工业冷灰背景
+                    color = Color(0xFFECEFF1)
                 ) {
                     EnterpriseHomeScreen()
                 }
@@ -64,23 +64,21 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun EnterpriseHomeScreen() {
+fun EnterpriseHomeScreen(
+    viewModel: HomeViewModel = viewModel() // 挂载刚写好的 ViewModel
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // 模拟应用级状态
-    var currentUrl by remember { mutableStateOf("http://192.168.1.100:8080/") }
-    var deviceSn by remember { mutableStateOf("YNDEV_PENDING...") }
-    var heartbeatStatus by remember { mutableStateOf("连接中") }
-    var mqttStatus by remember { mutableStateOf("未连接") }
-    var currentTime by remember { mutableStateOf("") }
+    // 观察 ViewModel 中的状态
+    val uiState by viewModel.uiState.collectAsState()
 
-    // 隐藏配置页的状态
+    var currentTime by remember { mutableStateOf("") }
     var showConfigDialog by remember { mutableStateOf(false) }
     var clickCount by remember { mutableStateOf(0) }
     var lastClickTime by remember { mutableStateOf(0L) }
 
-    // 实时时钟更新
+    // 1. 时钟更新
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -88,11 +86,15 @@ fun EnterpriseHomeScreen() {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // 2. 应用启动自动触发：设备心跳与获取 MQ (严格执行文档流程)
+    LaunchedEffect(Unit) {
+        viewModel.startDeviceInitialization()
+    }
 
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             // ==========================================
-            // 1. 企业级顶部导航栏 (Header)
+            // 顶部导航栏 (Header)
             // ==========================================
             Row(
                 modifier = Modifier
@@ -136,7 +138,7 @@ fun EnterpriseHomeScreen() {
             }
 
             // ==========================================
-            // 2. 核心业务卡片区
+            // 核心业务卡片区
             // ==========================================
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -149,7 +151,7 @@ fun EnterpriseHomeScreen() {
                     EnterpriseModuleCard(
                         icon = Icons.Default.AccountBox,
                         title = "晨检业务系统",
-                        subtitle = "健康监测终端工作台", // <- 已替换为简洁描述
+                        subtitle = "健康监测终端工作台",
                         statusText = "服务待命",
                         accentColor = Color(0xFF1976D2),
                         onClick = {
@@ -162,7 +164,7 @@ fun EnterpriseHomeScreen() {
                     EnterpriseModuleCard(
                         icon = Icons.Default.List,
                         title = "留样柜系统",
-                        subtitle = "食品留样终端工作台", // <- 已替换为简洁描述
+                        subtitle = "食品留样终端工作台",
                         statusText = "服务待命",
                         accentColor = Color(0xFF00796B),
                         onClick = {
@@ -173,7 +175,7 @@ fun EnterpriseHomeScreen() {
             }
 
             // ==========================================
-            // 3. 底部状态栏
+            // 底部状态栏 (动态绑定网络状态)
             // ==========================================
             Row(
                 modifier = Modifier
@@ -187,15 +189,16 @@ fun EnterpriseHomeScreen() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, contentDescription = "Device Info", tint = Color(0xFF546E7A), modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.width(16.dp))
-                    DiagnosticItem("设备 SN", deviceSn)
+                    DiagnosticItem("设备 SN", uiState.deviceSn)
                     DiagnosticDivider()
-                    DiagnosticItem("环境 URL", currentUrl)
+                    DiagnosticItem("环境 URL", uiState.currentUrl)
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusIndicator("心跳服务", heartbeatStatus, Color(0xFFFBC02D))
+                    // 状态指示灯与 ViewModel 双向绑定
+                    StatusIndicator("心跳服务", uiState.heartbeatStatus, uiState.heartbeatColor)
                     Spacer(modifier = Modifier.width(40.dp))
-                    StatusIndicator("MQTT 通信", mqttStatus, Color(0xFFE53935))
+                    StatusIndicator("MQTT 通信", uiState.mqttStatus, uiState.mqttColor)
                     Spacer(modifier = Modifier.width(40.dp))
                     Text(text = "版本: V1.0.4", fontSize = 22.sp, color = Color(0xFF90A4AE), fontWeight = FontWeight.Medium)
                 }
@@ -203,7 +206,7 @@ fun EnterpriseHomeScreen() {
         }
 
         // ==========================================
-        // 4. 隐藏的“陌生人”入口
+        // 隐藏的“陌生人”入口
         // ==========================================
         Box(
             modifier = Modifier
@@ -228,22 +231,17 @@ fun EnterpriseHomeScreen() {
                 },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "陌生人",
-                fontSize = 1.sp,
-                color = Color.Transparent
-            )
+            Text(text = "陌生人", fontSize = 1.sp, color = Color.Transparent)
         }
     }
 
     // ==========================================
-    // 5. 后台工程配置弹窗
+    // 后台工程配置弹窗
     // ==========================================
     if (showConfigDialog) {
-        var urlInput by remember { mutableStateOf(currentUrl) }
+        var urlInput by remember { mutableStateOf(uiState.currentUrl) }
         var passwordInput by remember { mutableStateOf("") }
         var isPasswordError by remember { mutableStateOf(false) }
-
         val ADMIN_PASSWORD = "123456"
 
         AlertDialog(
@@ -299,11 +297,8 @@ fun EnterpriseHomeScreen() {
                             }
 
                             var finalUrl = urlInput.trim()
-                            if (!finalUrl.endsWith("/")) {
-                                finalUrl += "/"
-                            }
+                            if (!finalUrl.endsWith("/")) finalUrl += "/"
 
-                            currentUrl = finalUrl
                             showConfigDialog = false
                             Toast.makeText(context, "配置已写入终端存储，正在执行软重启...", Toast.LENGTH_LONG).show()
 
@@ -337,48 +332,29 @@ fun EnterpriseHomeScreen() {
 // --- 企业级卡片组件 ---
 @Composable
 fun EnterpriseModuleCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    statusText: String,
-    accentColor: Color,
-    onClick: () -> Unit
+    icon: ImageVector, title: String, subtitle: String, statusText: String, accentColor: Color, onClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .size(width = 640.dp, height = 520.dp)
-            .clickable { onClick() },
+        modifier = Modifier.size(width = 640.dp, height = 520.dp).clickable { onClick() },
         shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxWidth().height(16.dp).background(accentColor))
-
             Column(
                 modifier = Modifier.fillMaxSize().padding(48.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    modifier = Modifier.size(100.dp),
-                    tint = accentColor
-                )
+                Icon(imageVector = icon, contentDescription = title, modifier = Modifier.size(100.dp), tint = accentColor)
                 Spacer(modifier = Modifier.height(24.dp))
-
                 Text(text = title, fontSize = 60.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF263238))
                 Spacer(modifier = Modifier.height(24.dp))
-                // 现在的 subtitle 更加简洁干练
                 Text(text = subtitle, fontSize = 26.sp, color = Color(0xFF546E7A))
-
                 Spacer(modifier = Modifier.height(64.dp))
-
                 Surface(
-                    shape = CircleShape,
-                    color = accentColor.copy(alpha = 0.1f),
-                    modifier = Modifier.wrapContentSize()
+                    shape = CircleShape, color = accentColor.copy(alpha = 0.1f), modifier = Modifier.wrapContentSize()
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
@@ -405,13 +381,7 @@ fun DiagnosticItem(label: String, value: String) {
 
 @Composable
 fun DiagnosticDivider() {
-    Box(
-        modifier = Modifier
-            .padding(horizontal = 32.dp)
-            .width(2.dp)
-            .height(32.dp)
-            .background(Color(0xFFCFD8DC))
-    )
+    Box(modifier = Modifier.padding(horizontal = 32.dp).width(2.dp).height(32.dp).background(Color(0xFFCFD8DC)))
 }
 
 @Composable
@@ -424,7 +394,6 @@ fun StatusIndicator(label: String, status: String, color: Color) {
     }
 }
 
-// --- 预览配置 ---
 @Preview(name = "彦诺 工业级设备终端", widthDp = 1920, heightDp = 1080, showBackground = true)
 @Composable
 fun EnterpriseHomeScreenPreview() {
