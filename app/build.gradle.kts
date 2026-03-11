@@ -56,6 +56,15 @@ dependencies {
 
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 
+
+
+//    implementation("com.yannuo:YNLibrary:1.15")
+
+        // 直接添加人脸识别 SDK 依赖，解决 mcv 报红问题
+    implementation("io.github.yannuo-lm:FacePassAndroidSDK-year-release:3.14.5")
+
+
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

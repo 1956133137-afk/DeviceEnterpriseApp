@@ -1,7 +1,9 @@
 package com.company.deviceapp
 
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Bundle
+import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -43,8 +45,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.company.deviceapp.ui.inspection.InspectionScreen
+import com.yannuo.library.faceHelper.FaceSDKHandler
+import com.yannuo.library.faceHelper.RecognizeCallback
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
+import mcv.facepass.types.FacePassRect
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -93,22 +98,32 @@ fun DeviceAppNavigation() {
 }
 
 // 首页 UI
-
-
 @Composable
 fun InspectionContainerScreen(
     onBack: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var showFacePanel by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Box(modifier = Modifier.fillMaxSize()) {
         InspectionScreen(onBack = onBack)
 
+        if (showFacePanel) {
+            FaceLoginPreviewPanel(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 20.dp, top = 20.dp, bottom = 20.dp)
+                    .width(420.dp)
+                    .fillMaxHeight(0.82f),
+                onClose = { showFacePanel = false }
+            )
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 18.dp, end = 22.dp)
+                .padding(top = 20.dp, end = 24.dp)
         ) {
             PremiumLoginDropdown(
                 expanded = menuExpanded,
@@ -116,12 +131,180 @@ fun InspectionContainerScreen(
                 onDismiss = { menuExpanded = false },
                 onFaceLogin = {
                     menuExpanded = false
-                    Toast.makeText(context, "暂未接入人脸识别登录", Toast.LENGTH_SHORT).show()
+                    showFacePanel = true
                 },
                 onCardLogin = {
                     menuExpanded = false
                     Toast.makeText(context, "暂未接入刷卡登录", Toast.LENGTH_SHORT).show()
                 }
+            )
+        }
+    }
+}
+
+@Composable
+fun FaceLoginPreviewPanel(
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+
+    var sdkMessage by remember { mutableStateOf("正在准备人脸识别...") }
+    var textureViewRef by remember { mutableStateOf<TextureView?>(null) }
+    var sdkStarted by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            FaceSDKHandler.getInstance().stopFaceDetect()
+            FaceSDKHandler.getInstance().closeCamera()
+            FaceSDKHandler.getInstance().releaseSDKResource()
+            FaceSDKHandler.getInstance().clearAuthFaceCallback()
+        }
+    }
+
+    LaunchedEffect(textureViewRef) {
+        val textureView = textureViewRef ?: return@LaunchedEffect
+        if (sdkStarted) return@LaunchedEffect
+
+        sdkStarted = true
+        sdkMessage = "正在初始化人脸SDK..."
+
+        val appContext = context.applicationContext
+
+        FaceSDKHandler.getInstance().initFaceSDK(
+            appContext,
+            "inspection_group",
+            appContext.filesDir.absolutePath
+        ) { code, message ->
+            activity?.runOnUiThread {
+                if (code == 0) {
+                    sdkMessage = "SDK初始化成功，正在打开摄像头..."
+
+                    val previewRect = Rect(
+                        0,
+                        0,
+                        textureView.width.coerceAtLeast(1),
+                        textureView.height.coerceAtLeast(1)
+                    )
+
+                    val opened = FaceSDKHandler.getInstance().openCamera(
+                        previewRect,
+                        textureView,
+                        object : RecognizeCallback {
+
+                            override fun onPreView(
+                                data: ByteArray,
+                                width: Int,
+                                height: Int
+                            ) {
+                                // 这里只是预览原始数据回调
+                                // 目前你的需求只是显示摄像头画面，不需要额外处理
+                            }
+
+                            override fun onDrawFaceBox(
+                                rect: FacePassRect,
+                                width: Int,
+                                height: Int
+                            ) {
+                                // 如果后续你想叠加绘制人脸框，可以在这里扩展
+                                // 当前先不做大改动
+                            }
+
+                            override fun onRecognized(
+                                faceToken: String,
+                                faceUrl: String,
+                                faceScore: String
+                            ) {
+                                activity.runOnUiThread {
+                                    sdkMessage = "识别成功，分数: $faceScore"
+                                    Toast.makeText(
+                                        context,
+                                        "人脸识别成功",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+
+                                    // 这里后续可以接登录成功逻辑：
+                                    // 1. faceToken 匹配本地/服务端人员
+                                    // 2. 登录成功后关闭面板或进入下一步
+                                }
+                            }
+
+                            override fun onTips(msg: String) {
+                                activity.runOnUiThread {
+                                    sdkMessage = msg
+                                }
+                            }
+                        }
+                    )
+
+                    if (opened) {
+                        FaceSDKHandler.getInstance().startFaceDetect()
+                        sdkMessage = "请面向摄像头进行人脸识别"
+                    } else {
+                        sdkMessage = "摄像头打开失败"
+                    }
+                } else {
+                    sdkMessage = "SDK初始化失败: $message"
+                }
+            }
+        }
+    }
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "人脸识别登录",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0D47A1)
+                )
+
+                TextButton(onClick = onClose) {
+                    Text("关闭", fontSize = 18.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF111827)),
+                contentAlignment = Alignment.Center
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        TextureView(ctx).apply {
+                            textureViewRef = this
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = sdkMessage,
+                fontSize = 18.sp,
+                color = Color(0xFF455A64)
             )
         }
     }
@@ -139,21 +322,21 @@ fun PremiumLoginDropdown(
     Box {
         Surface(
             modifier = Modifier
-                .shadow(6.dp, RoundedCornerShape(17.dp))
-                .clip(RoundedCornerShape(17.dp))
+                .shadow(6.dp, RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .clickable { onToggle() },
-            shape = RoundedCornerShape(17.dp),
+            shape = RoundedCornerShape(18.dp),
             color = Color(0xFF0D47A1)
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 15.dp),
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = "登录",
                     tint = Color.White,
-                    modifier = Modifier.size(25.dp)
+                    modifier = Modifier.size(26.dp)
                 )
 
                 Spacer(modifier = Modifier.width(10.dp))
@@ -161,7 +344,7 @@ fun PremiumLoginDropdown(
                 Text(
                     text = "登录",
                     color = Color.White,
-                    fontSize = 24.sp,
+                    fontSize = 26.sp,
                     fontWeight = FontWeight.Bold
                 )
 
@@ -171,7 +354,7 @@ fun PremiumLoginDropdown(
                     imageVector = Icons.Default.KeyboardArrowDown,
                     contentDescription = "展开",
                     tint = Color.White,
-                    modifier = Modifier.size(23.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
