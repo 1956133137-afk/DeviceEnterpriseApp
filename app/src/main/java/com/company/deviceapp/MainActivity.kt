@@ -5,7 +5,9 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -14,7 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -33,7 +38,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -41,7 +45,6 @@ import androidx.navigation.compose.rememberNavController
 import com.company.deviceapp.ui.inspection.InspectionScreen
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -70,9 +73,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ==========================================
 // 全局路由控制器
-// ==========================================
 @Composable
 fun DeviceAppNavigation() {
     val navController = rememberNavController()
@@ -84,14 +85,203 @@ fun DeviceAppNavigation() {
         }
         // 2. 晨检机业务页
         composable("inspection") {
-            InspectionScreen(onBack = { navController.popBackStack() })
+            InspectionContainerScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
     }
 }
 
-// ==========================================
 // 首页 UI
-// ==========================================
+
+
+@Composable
+fun InspectionContainerScreen(
+    onBack: () -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        InspectionScreen(onBack = onBack)
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 18.dp, end = 22.dp)
+        ) {
+            PremiumLoginDropdown(
+                expanded = menuExpanded,
+                onToggle = { menuExpanded = !menuExpanded },
+                onDismiss = { menuExpanded = false },
+                onFaceLogin = {
+                    menuExpanded = false
+                    Toast.makeText(context, "暂未接入人脸识别登录", Toast.LENGTH_SHORT).show()
+                },
+                onCardLogin = {
+                    menuExpanded = false
+                    Toast.makeText(context, "暂未接入刷卡登录", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+    }
+}
+
+
+@Composable
+fun PremiumLoginDropdown(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onDismiss: () -> Unit,
+    onFaceLogin: () -> Unit,
+    onCardLogin: () -> Unit
+) {
+    Box {
+        Surface(
+            modifier = Modifier
+                .shadow(6.dp, RoundedCornerShape(17.dp))
+                .clip(RoundedCornerShape(17.dp))
+                .clickable { onToggle() },
+            shape = RoundedCornerShape(17.dp),
+            color = Color(0xFF0D47A1)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 15.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "登录",
+                    tint = Color.White,
+                    modifier = Modifier.size(25.dp)
+                )
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Text(
+                    text = "登录",
+                    color = Color.White,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "展开",
+                    tint = Color.White,
+                    modifier = Modifier.size(23.dp)
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismiss,
+            modifier = Modifier
+                .width(280.dp)
+                .background(Color.White)
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = Color(0xFF1565C0),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "人脸识别登录",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF263238)
+                        )
+                    }
+                },
+                onClick = onFaceLogin
+            )
+
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AccountBox,
+                            contentDescription = null,
+                            tint = Color(0xFF1565C0),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "刷卡登录",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF263238)
+                        )
+                    }
+                },
+                onClick = onCardLogin
+            )
+        }
+    }
+}
+
+
+@Composable
+fun LoginDropdownItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    DropdownMenuItem(
+        text = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFEAF3FF)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color(0xFF1565C0),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column {
+                    Text(
+                        text = title,
+                        fontSize = 23.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1F2D3D)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = subtitle,
+                        fontSize = 15.sp,
+                        color = Color(0xFF7A8A99)
+                    )
+                }
+            }
+        },
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+    )
+}
+
 @Composable
 fun EnterpriseHomeScreen(
     navController: NavHostController,

@@ -92,7 +92,7 @@ fun InspectionScreen(
                         Button(
                             onClick = { viewModel.onFaceRecognized("390", "TEST_DEVICE_001") },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
-                        ) { Text("模拟：人脸识别成功", fontSize = 24.sp) }
+                        ) { Text("人脸识别成功", fontSize = 24.sp) }
                     }
                     InspectionStep.DOING_INSPECTION -> {
                         Text("识别通过。请将双手置于检测区域...", fontSize = 32.sp, color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
