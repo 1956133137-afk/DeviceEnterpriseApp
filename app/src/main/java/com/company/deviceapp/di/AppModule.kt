@@ -2,6 +2,8 @@ package com.company.deviceapp.di
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.room.Room
+import com.company.deviceapp.data.local.db.AppDatabase
 import com.company.deviceapp.data.local.db.PersonnelDao
 import com.company.deviceapp.data.local.db.PersonnelEntity
 import com.company.deviceapp.data.remote.api.MorningInspectionApiService
@@ -48,21 +50,25 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun providePersonnelDao(): PersonnelDao {
-        return object : PersonnelDao {
-            override suspend fun insertOrUpdatePersonnel(personnel: PersonnelEntity) {}
-            override suspend fun deletePersonnelById(id: String) {}
-            override suspend fun deleteAllPersonnel() {}
-            override suspend fun getPersonnelById(id: String): PersonnelEntity? = null
-        }
+    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            "device_enterprise_db"
+        ).build()
     }
 
-    // ⚠️ 把原来的 provideMqttClientManager 替换成这个：
+    @Provides
+    @Singleton
+    fun providePersonnelDao(database: AppDatabase): PersonnelDao {
+        return database.personnelDao()
+    }
+
     @Provides
     @Singleton
     fun provideMqttClientManager(
         @ApplicationContext context: Context,
-        personnelDao: PersonnelDao // 将 Dao 传给 Mqtt 管理器
+        personnelDao: PersonnelDao
     ): MqttClientManager {
         return MqttClientManager(context, personnelDao)
     }
