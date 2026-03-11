@@ -28,6 +28,10 @@ android {
                 "proguard-rules.pro"
             )
         }
+        debug {
+            // 修正：Kotlin DSL 中赋值应使用 '=' 或者方法调用，此处 debuggable 为属性
+            isDebuggable = true
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

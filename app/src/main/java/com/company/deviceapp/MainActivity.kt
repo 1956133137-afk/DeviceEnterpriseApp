@@ -301,7 +301,7 @@ fun EnterpriseHomeScreen(
 
                             // ⚠️ 核心修复：真正写入 Android 设备的硬盘
                             val sharedPrefs = context.getSharedPreferences("device_config", android.content.Context.MODE_PRIVATE)
-                            sharedPrefs.edit().putString("BASE_URL", finalUrl).apply()
+                            sharedPrefs.edit().putString("BASE_URL", finalUrl).commit()
 
                             showConfigDialog = false
                             Toast.makeText(context, "配置已永久写入，正在重启...", Toast.LENGTH_LONG).show()

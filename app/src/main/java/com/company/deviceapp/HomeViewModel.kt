@@ -84,9 +84,9 @@ class HomeViewModel @Inject constructor(
             } catch (e: Exception) {
                 android.util.Log.e("NetworkError", "心跳失败原因：", e)
                 _uiState.update {
-                    it.copy(heartbeatStatus = "网络异常(看Logcat)", heartbeatColor = Color(0xFFD32F2F))
+                    it.copy(heartbeatStatus = "网络异常", heartbeatColor = Color(0xFFD32F2F))
                 }
-                mockConnectMqttForTesting()
+//                mockConnectMqttForTesting()
             }
         }
     }

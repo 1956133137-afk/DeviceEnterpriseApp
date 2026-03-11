@@ -57,9 +57,13 @@ object AppModule {
         }
     }
 
+    // ⚠️ 把原来的 provideMqttClientManager 替换成这个：
     @Provides
     @Singleton
-    fun provideMqttClientManager(@ApplicationContext context: Context): MqttClientManager {
-        return MqttClientManager(context)
+    fun provideMqttClientManager(
+        @ApplicationContext context: Context,
+        personnelDao: PersonnelDao // 将 Dao 传给 Mqtt 管理器
+    ): MqttClientManager {
+        return MqttClientManager(context, personnelDao)
     }
 }
