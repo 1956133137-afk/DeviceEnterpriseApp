@@ -55,6 +55,8 @@ fun InspectionScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
+    var faceLoginSession by remember { mutableStateOf(0) }
+
     var menuExpanded by remember { mutableStateOf(false) }
     var faceLoginActive by remember { mutableStateOf(false) }
 
@@ -90,6 +92,7 @@ fun InspectionScreen(
         ) {
             if (faceLoginActive) {
                 FaceSdkPreviewArea(
+                    sessionId = faceLoginSession,
                     modifier = Modifier.fillMaxSize(),
                     onRecognizedSuccess = { faceToken, faceUrl, faceScore ->
                         Toast.makeText(context, "人脸识别成功", Toast.LENGTH_SHORT).show()
@@ -101,20 +104,14 @@ fun InspectionScreen(
                     }
                 )
             } else {
-                if (hasCameraPermission) {
-                    HardwareCameraPreview(modifier = Modifier.fillMaxSize())
-                } else {
+                if (!hasCameraPermission) {
                     Text(
                         "正在请求底层硬件摄像头权限...",
                         color = Color(0xFFCFD8DC),
                         fontSize = 28.sp
                     )
-                }
-
-                if (uiState.currentStep == InspectionStep.WAITING_FACE_LOGIN) {
-                    IdleCameraOverlay(
-                        modifier = Modifier.fillMaxSize()
-                    )
+                } else {
+                    IdleCameraOverlay(modifier = Modifier.fillMaxSize())
                 }
             }
 
@@ -258,6 +255,8 @@ fun InspectionScreen(
                             },
                             onClick = {
                                 menuExpanded = false
+                                viewModel.resetToNextPerson()
+                                faceLoginSession += 1
                                 faceLoginActive = true
                             }
                         )
@@ -463,28 +462,33 @@ fun InspectionScreen(
 
 @Composable
 fun FaceSdkPreviewArea(
+    sessionId: Int,
     modifier: Modifier = Modifier,
     onRecognizedSuccess: (faceToken: String, faceUrl: String, faceScore: String) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? android.app.Activity
+    val coroutineScope = rememberCoroutineScope()
 
-    var sdkMessage by remember { mutableStateOf("正在准备人脸识别...") }
-    var textureViewRef by remember { mutableStateOf<TextureView?>(null) }
-    var sdkStarted by remember { mutableStateOf(false) }
+    var sdkMessage by remember(sessionId) { mutableStateOf("正在准备人脸识别...") }
+    var textureViewRef by remember(sessionId) { mutableStateOf<TextureView?>(null) }
+    var surfaceReady by remember(sessionId) { mutableStateOf(false) }
+    var sdkStarted by remember(sessionId) { mutableStateOf(false) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(sessionId) {
         onDispose {
+            // 轻量化清理：只停止摄像头和检测，不销毁 SDK 全局资源（避免杀掉单例内的协程作用域）
             FaceSDKHandler.getInstance().stopFaceDetect()
             FaceSDKHandler.getInstance().closeCamera()
-            FaceSDKHandler.getInstance().releaseSDKResource()
             FaceSDKHandler.getInstance().clearAuthFaceCallback()
+            // FaceSDKHandler.getInstance().releaseSDKResource() // 关键：这一行会导致单例 Scope 被 cancel，第二次启动无响应
         }
     }
 
-    LaunchedEffect(textureViewRef) {
+    LaunchedEffect(sessionId, textureViewRef, surfaceReady) {
         val textureView = textureViewRef ?: return@LaunchedEffect
+        if (!surfaceReady) return@LaunchedEffect
         if (sdkStarted) return@LaunchedEffect
         if (textureView.width <= 0 || textureView.height <= 0) return@LaunchedEffect
 
@@ -502,20 +506,12 @@ fun FaceSdkPreviewArea(
                 if (code == 0) {
                     sdkMessage = "SDK初始化成功，正在打开摄像头..."
 
-//                    val opened = FaceSDKHandler.getInstance().openCamera(
-//                        Rect(
-//                            0,
-//                            0,
-//                            textureView.width.coerceAtLeast(1),
-//                            textureView.height.coerceAtLeast(1)
-//                        ),
-//                        textureView,
                     val viewWidth = textureView.width.coerceAtLeast(1)
                     val viewHeight = textureView.height.coerceAtLeast(1)
 
                     val left = (viewWidth * 0.18f).toInt()
                     val top = (viewHeight * 0.10f).toInt()
-                    val right = (viewWidth * 0.99f).toInt()
+                    val right = (viewWidth * 0.99f).toInt().coerceAtMost(viewWidth - 1)
                     val bottom = (viewHeight * 0.90f).toInt()
 
                     val previewRect = Rect(left, top, right, bottom)
@@ -525,10 +521,13 @@ fun FaceSdkPreviewArea(
                         textureView,
                         object : RecognizeCallback {
                             override fun onPreView(data: ByteArray, width: Int, height: Int) {}
-
                             override fun onDrawFaceBox(rect: FacePassRect, width: Int, height: Int) {}
 
-                            override fun onRecognized(faceToken: String, faceUrl: String, faceScore: String) {
+                            override fun onRecognized(
+                                faceToken: String,
+                                faceUrl: String,
+                                faceScore: String
+                            ) {
                                 activity?.runOnUiThread {
                                     sdkMessage = "识别成功，分数: $faceScore"
                                     onRecognizedSuccess(faceToken, faceUrl, faceScore)
@@ -544,29 +543,60 @@ fun FaceSdkPreviewArea(
                     )
 
                     if (opened) {
-                        FaceSDKHandler.getInstance().startFaceDetect()
-                        sdkMessage = "请面向摄像头进行人脸识别"
+                        coroutineScope.launch {
+                            delay(500)
+                            FaceSDKHandler.getInstance().startFaceDetect()
+                            sdkMessage = "请面向摄像头进行人脸识别"
+                        }
                     } else {
                         sdkMessage = "摄像头打开失败"
+                        sdkStarted = false
                     }
                 } else {
                     sdkMessage = "SDK初始化失败: $message"
+                    sdkStarted = false
                 }
             }
         }
     }
 
     Box(modifier = modifier.background(Color(0xFF102027))) {
-        AndroidView(
-            factory = { ctx ->
-                TextureView(ctx).apply {
-                    post {
-                        textureViewRef = this
+        key(sessionId) {
+            AndroidView(
+                factory = { ctx ->
+                    TextureView(ctx).apply {
+                        surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                            override fun onSurfaceTextureAvailable(
+                                surface: android.graphics.SurfaceTexture,
+                                width: Int,
+                                height: Int
+                            ) {
+                                textureViewRef = this@apply
+                                surfaceReady = true
+                            }
+
+                            override fun onSurfaceTextureSizeChanged(
+                                surface: android.graphics.SurfaceTexture,
+                                width: Int,
+                                height: Int
+                            ) {}
+
+                            override fun onSurfaceTextureDestroyed(
+                                surface: android.graphics.SurfaceTexture
+                            ): Boolean {
+                                surfaceReady = false
+                                return true
+                            }
+
+                            override fun onSurfaceTextureUpdated(
+                                surface: android.graphics.SurfaceTexture
+                            ) {}
+                        }
                     }
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         if (!sdkStarted || sdkMessage.contains("初始化") || sdkMessage.contains("准备")) {
             FaceSdkStartupOverlay(
@@ -600,8 +630,8 @@ fun FaceSdkPreviewArea(
             }
         }
     }
-
 }
+
 @Composable
 fun FaceSdkStartupOverlay(
     message: String,
@@ -647,6 +677,7 @@ fun FaceSdkStartupOverlay(
         }
     }
 }
+
 @Composable
 fun HardwareCameraPreview(modifier: Modifier = Modifier) {
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -679,6 +710,7 @@ fun HardwareCameraPreview(modifier: Modifier = Modifier) {
         modifier = modifier
     )
 }
+
 @Composable
 fun IdleCameraOverlay(
     modifier: Modifier = Modifier
