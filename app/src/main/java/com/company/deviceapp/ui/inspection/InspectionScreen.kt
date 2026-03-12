@@ -2,6 +2,7 @@ package com.company.deviceapp.ui.inspection
 
 import android.Manifest
 import android.graphics.Rect
+import android.util.Log
 import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.yannuo.library.faceHelper.CameraUtil
 import com.yannuo.library.faceHelper.FaceSDKHandler
 import com.yannuo.library.faceHelper.RecognizeCallback
 import kotlinx.coroutines.delay
@@ -70,6 +72,19 @@ fun InspectionScreen(
 
     LaunchedEffect(Unit) {
         permissionLauncher.launch(Manifest.permission.CAMERA)
+        
+        try {
+            // 1. 初始化摄像头工具类
+            CameraUtil.instance.initCamera(context)
+            // 2. 获取所有可用摄像头 ID 列表
+            val cameraIdList = CameraUtil.instance.getCameraIdList()
+            Log.d("CameraDebug", " 扫描到系统摄像头数量: ${cameraIdList?.size ?: 0}")
+            cameraIdList?.forEachIndexed { index, id ->
+                Log.d("CameraDebug", " 摄像头索引[$index] -> ID: $id")
+            }
+        } catch (e: Exception) {
+            Log.e("CameraDebug", " 扫描摄像头硬件失败", e)
+        }
     }
 
     Row(
@@ -478,11 +493,9 @@ fun FaceSdkPreviewArea(
 
     DisposableEffect(sessionId) {
         onDispose {
-            // 轻量化清理：只停止摄像头和检测，不销毁 SDK 全局资源（避免杀掉单例内的协程作用域）
             FaceSDKHandler.getInstance().stopFaceDetect()
             FaceSDKHandler.getInstance().closeCamera()
             FaceSDKHandler.getInstance().clearAuthFaceCallback()
-            // FaceSDKHandler.getInstance().releaseSDKResource() // 关键：这一行会导致单例 Scope 被 cancel，第二次启动无响应
         }
     }
 
