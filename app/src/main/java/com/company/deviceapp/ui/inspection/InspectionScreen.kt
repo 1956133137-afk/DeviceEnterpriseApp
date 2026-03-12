@@ -7,6 +7,8 @@ import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview as CameraXPreview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -61,6 +63,7 @@ fun InspectionScreen(
 
     var menuExpanded by remember { mutableStateOf(false) }
     var faceLoginActive by remember { mutableStateOf(false) }
+    var cardLoginActive by remember { mutableStateOf(false) }
 
     // 企业级动态请求硬件摄像头权限
     var hasCameraPermission by remember { mutableStateOf(false) }
@@ -118,6 +121,12 @@ fun InspectionScreen(
                         faceLoginActive = false
                     }
                 )
+            } else if (cardLoginActive) {
+                // 刷卡登录时，显示指定的摄像头4画面
+                CardLoginPreviewArea(
+                    onClose = { cardLoginActive = false },
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
                 if (!hasCameraPermission) {
                     Text(
@@ -130,7 +139,7 @@ fun InspectionScreen(
                 }
             }
 
-            if (!faceLoginActive) {
+            if (!faceLoginActive && !cardLoginActive) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
@@ -233,7 +242,7 @@ fun InspectionScreen(
                                 fontSize = 26.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(6.6.dp))
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
                                 contentDescription = "展开",
@@ -273,6 +282,7 @@ fun InspectionScreen(
                                 viewModel.resetToNextPerson()
                                 faceLoginSession += 1
                                 faceLoginActive = true
+                                cardLoginActive = false
                             }
                         )
 
@@ -296,7 +306,8 @@ fun InspectionScreen(
                             },
                             onClick = {
                                 menuExpanded = false
-                                Toast.makeText(context, "暂未接入刷卡登录", Toast.LENGTH_SHORT).show()
+                                faceLoginActive = false
+                                cardLoginActive = true
                             }
                         )
                     }
@@ -305,8 +316,8 @@ fun InspectionScreen(
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            // 人脸登录激活时，右侧不显示待机提示
-            if (uiState.currentStep == InspectionStep.WAITING_FACE_LOGIN && !faceLoginActive) {
+            // 登录激活时，右侧不显示待机提示
+            if (uiState.currentStep == InspectionStep.WAITING_FACE_LOGIN && !faceLoginActive && !cardLoginActive) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
@@ -722,6 +733,92 @@ fun HardwareCameraPreview(modifier: Modifier = Modifier) {
         },
         modifier = modifier
     )
+}
+
+/**
+ * 刷卡登录预览区域，专门显示摄像头 ID 为 4 的画面
+ */
+@androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
+@OptIn(ExperimentalCamera2Interop::class)
+@Composable
+fun CardLoginPreviewArea(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    Box(modifier = modifier.background(Color.Black)) {
+        AndroidView(
+            factory = { ctx ->
+                val previewView = PreviewView(ctx).apply {
+                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                }
+
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                cameraProviderFuture.addListener({
+                    val cameraProvider = cameraProviderFuture.get()
+                    val preview = CameraXPreview.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
+
+                    // 核心修改：通过 Camera2Interop 强制过滤并选择 ID 为 "4" 的摄像头
+                    val cameraSelector = CameraSelector.Builder()
+                        .addCameraFilter { cameraInfos ->
+                            val filtered = cameraInfos.filter { 
+                                Camera2CameraInfo.from(it).cameraId == "4" 
+                            }
+                            if (filtered.isEmpty()) {
+                                Log.w("CameraDebug", "未找到ID为4的摄像头，降级使用后置摄像头")
+                                cameraInfos.filter { it.lensFacing == CameraSelector.LENS_FACING_BACK }
+                            } else {
+                                filtered
+                            }
+                        }
+                        .build()
+
+                    try {
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+                    } catch (exc: Exception) {
+                        Log.e("CameraDebug", "绑定摄像头4失败", exc)
+                    }
+                }, ContextCompat.getMainExecutor(ctx))
+
+                previewView
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 覆盖层信息
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 64.dp)
+                .background(
+                    Color.Black.copy(alpha = 0.55f),
+                    RoundedCornerShape(16.dp)
+                )
+                .padding(horizontal = 24.dp, vertical = 18.dp)
+        ) {
+            Text(
+                text = "请刷卡进行登录",
+                fontSize = 28.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = onClose,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+            ) {
+                Text("退出刷卡登录", fontSize = 22.sp)
+            }
+        }
+    }
 }
 
 @Composable
