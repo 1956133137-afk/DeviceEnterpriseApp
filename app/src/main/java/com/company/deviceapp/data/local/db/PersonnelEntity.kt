@@ -1,25 +1,25 @@
 package com.company.deviceapp.data.local.db
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
 import androidx.room.Dao
+import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
 import androidx.room.Query
 
-// 严格对应 MQTT 协议中的人员字段
 @Entity(tableName = "personnel")
 data class PersonnelEntity(
     @PrimaryKey val personnelId: String,
     val name: String?,
-    val faceFeatureImgPath: String?, // 用于本地人脸特征提取比对
+    val faceFeatureImgPath: String?,
+    val faceToken: String?,          // 新增：本地 FacePass 注册后回写的 token
     val icNum: String?,
     val jobNum: String?,
     val memberType: String?,
     val personnelType: String?,
     val phone: String?,
-    val healthCard: String?,         // 健康证照片URL
-    val healthCardTime: String?      // 健康证有效期
+    val healthCard: String?,
+    val healthCardTime: String?
 )
 
 @Dao
@@ -35,4 +35,7 @@ interface PersonnelDao {
 
     @Query("SELECT * FROM personnel WHERE personnelId = :id")
     suspend fun getPersonnelById(id: String): PersonnelEntity?
+
+    @Query("SELECT * FROM personnel WHERE faceToken = :faceToken LIMIT 1")
+    suspend fun getPersonnelByFaceToken(faceToken: String): PersonnelEntity?
 }

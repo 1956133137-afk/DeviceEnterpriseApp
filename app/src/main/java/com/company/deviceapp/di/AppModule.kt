@@ -55,7 +55,9 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "device_enterprise_db"
-        ).build()
+        )
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides

@@ -94,7 +94,7 @@ fun InspectionScreen(
                     onRecognizedSuccess = { faceToken, faceUrl, faceScore ->
                         Toast.makeText(context, "人脸识别成功", Toast.LENGTH_SHORT).show()
                         faceLoginActive = false
-                        viewModel.onFaceRecognized("390", "TEST_DEVICE_001")
+                        viewModel.onFaceRecognized(faceToken, "TEST_DEVICE_001")
                     },
                     onClose = {
                         faceLoginActive = false
@@ -156,7 +156,6 @@ fun InspectionScreen(
             }
         }
 
-        // ==========================================
         // 右侧：业务交互区
         // ==========================================
         Column(
@@ -503,37 +502,33 @@ fun FaceSdkPreviewArea(
                 if (code == 0) {
                     sdkMessage = "SDK初始化成功，正在打开摄像头..."
 
+//                    val opened = FaceSDKHandler.getInstance().openCamera(
+//                        Rect(
+//                            0,
+//                            0,
+//                            textureView.width.coerceAtLeast(1),
+//                            textureView.height.coerceAtLeast(1)
+//                        ),
+//                        textureView,
+                    val viewWidth = textureView.width.coerceAtLeast(1)
+                    val viewHeight = textureView.height.coerceAtLeast(1)
+
+                    val left = (viewWidth * 0.18f).toInt()
+                    val top = (viewHeight * 0.10f).toInt()
+                    val right = (viewWidth * 0.99f).toInt()
+                    val bottom = (viewHeight * 0.90f).toInt()
+
+                    val previewRect = Rect(left, top, right, bottom)
+
                     val opened = FaceSDKHandler.getInstance().openCamera(
-                        Rect(
-                            0,
-                            0,
-                            textureView.width.coerceAtLeast(1),
-                            textureView.height.coerceAtLeast(1)
-                        ),
+                        previewRect,
                         textureView,
                         object : RecognizeCallback {
+                            override fun onPreView(data: ByteArray, width: Int, height: Int) {}
 
-                            override fun onPreView(
-                                data: ByteArray,
-                                width: Int,
-                                height: Int
-                            ) {
-                                // 暂时不处理预览原始数据
-                            }
+                            override fun onDrawFaceBox(rect: FacePassRect, width: Int, height: Int) {}
 
-                            override fun onDrawFaceBox(
-                                rect: FacePassRect,
-                                width: Int,
-                                height: Int
-                            ) {
-                                // 后续如需绘制人脸框，可以在这里扩展
-                            }
-
-                            override fun onRecognized(
-                                faceToken: String,
-                                faceUrl: String,
-                                faceScore: String
-                            ) {
+                            override fun onRecognized(faceToken: String, faceUrl: String, faceScore: String) {
                                 activity?.runOnUiThread {
                                     sdkMessage = "识别成功，分数: $faceScore"
                                     onRecognizedSuccess(faceToken, faceUrl, faceScore)

@@ -43,11 +43,23 @@ class InspectionViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(InspectionUiState())
     val uiState: StateFlow<InspectionUiState> = _uiState
 
-    fun onFaceRecognized(personnelId: String, deviceSn: String) {
+    fun onFaceRecognized(faceToken: String, deviceSn: String) {
         viewModelScope.launch {
-            val mockUser = PersonnelEntity(personnelId, "张三(测试)", null, "111", "DW001", "1", "4", "138", null, null)
-            _uiState.update { it.copy(currentUser = mockUser, currentStep = InspectionStep.DOING_INSPECTION) }
-            fetchInspectionData(mockUser.personnelId, deviceSn)
+            val localUser = personnelDao.getPersonnelByFaceToken(faceToken)
+            if (localUser != null) {
+                _uiState.update {
+                    it.copy(
+                        currentUser = localUser,
+                        currentStep = InspectionStep.DOING_INSPECTION,
+                        errorMessage = null
+                    )
+                }
+                fetchInspectionData(localUser.personnelId, deviceSn)
+            } else {
+                _uiState.update {
+                    it.copy(errorMessage = "未在本地人员库中匹配到该人脸")
+                }
+            }
         }
     }
 
