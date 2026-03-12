@@ -1,15 +1,11 @@
 package com.company.deviceapp
 
 import android.content.Intent
-import android.graphics.Rect
 import android.os.Bundle
-import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -18,9 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,7 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -45,11 +38,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.company.deviceapp.ui.inspection.InspectionScreen
-import com.yannuo.library.faceHelper.FaceSDKHandler
-import com.yannuo.library.faceHelper.RecognizeCallback
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
-import mcv.facepass.types.FacePassRect
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -78,7 +68,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ==========================================
 // 全局路由控制器
+// ==========================================
 @Composable
 fun DeviceAppNavigation() {
     val navController = rememberNavController()
@@ -90,381 +82,14 @@ fun DeviceAppNavigation() {
         }
         // 2. 晨检机业务页
         composable("inspection") {
-            InspectionContainerScreen(
-                onBack = { navController.popBackStack() }
-            )
+            InspectionScreen(onBack = { navController.popBackStack() })
         }
     }
 }
 
+// ==========================================
 // 首页 UI
-@Composable
-fun InspectionContainerScreen(
-    onBack: () -> Unit
-) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var showFacePanel by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        InspectionScreen(onBack = onBack)
-
-        if (showFacePanel) {
-            FaceLoginPreviewPanel(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 20.dp, top = 20.dp, bottom = 20.dp)
-                    .width(420.dp)
-                    .fillMaxHeight(0.82f),
-                onClose = { showFacePanel = false }
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 24.dp)
-        ) {
-            PremiumLoginDropdown(
-                expanded = menuExpanded,
-                onToggle = { menuExpanded = !menuExpanded },
-                onDismiss = { menuExpanded = false },
-                onFaceLogin = {
-                    menuExpanded = false
-                    showFacePanel = true
-                },
-                onCardLogin = {
-                    menuExpanded = false
-                    Toast.makeText(context, "暂未接入刷卡登录", Toast.LENGTH_SHORT).show()
-                }
-            )
-        }
-    }
-}
-
-@Composable
-fun FaceLoginPreviewPanel(
-    modifier: Modifier = Modifier,
-    onClose: () -> Unit
-) {
-    val context = LocalContext.current
-    val activity = context as? android.app.Activity
-
-    var sdkMessage by remember { mutableStateOf("正在准备人脸识别...") }
-    var textureViewRef by remember { mutableStateOf<TextureView?>(null) }
-    var sdkStarted by remember { mutableStateOf(false) }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            FaceSDKHandler.getInstance().stopFaceDetect()
-            FaceSDKHandler.getInstance().closeCamera()
-            FaceSDKHandler.getInstance().releaseSDKResource()
-            FaceSDKHandler.getInstance().clearAuthFaceCallback()
-        }
-    }
-
-    LaunchedEffect(textureViewRef) {
-        val textureView = textureViewRef ?: return@LaunchedEffect
-        if (sdkStarted) return@LaunchedEffect
-
-        sdkStarted = true
-        sdkMessage = "正在初始化人脸SDK..."
-
-        val appContext = context.applicationContext
-
-        FaceSDKHandler.getInstance().initFaceSDK(
-            appContext,
-            "inspection_group",
-            appContext.filesDir.absolutePath
-        ) { code, message ->
-            activity?.runOnUiThread {
-                if (code == 0) {
-                    sdkMessage = "SDK初始化成功，正在打开摄像头..."
-
-                    val previewRect = Rect(
-                        0,
-                        0,
-                        textureView.width.coerceAtLeast(1),
-                        textureView.height.coerceAtLeast(1)
-                    )
-
-                    val opened = FaceSDKHandler.getInstance().openCamera(
-                        previewRect,
-                        textureView,
-                        object : RecognizeCallback {
-
-                            override fun onPreView(
-                                data: ByteArray,
-                                width: Int,
-                                height: Int
-                            ) {
-                                // 这里只是预览原始数据回调
-                                // 目前你的需求只是显示摄像头画面，不需要额外处理
-                            }
-
-                            override fun onDrawFaceBox(
-                                rect: FacePassRect,
-                                width: Int,
-                                height: Int
-                            ) {
-                                // 如果后续你想叠加绘制人脸框，可以在这里扩展
-                                // 当前先不做大改动
-                            }
-
-                            override fun onRecognized(
-                                faceToken: String,
-                                faceUrl: String,
-                                faceScore: String
-                            ) {
-                                activity.runOnUiThread {
-                                    sdkMessage = "识别成功，分数: $faceScore"
-                                    Toast.makeText(
-                                        context,
-                                        "人脸识别成功",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-
-                                    // 这里后续可以接登录成功逻辑：
-                                    // 1. faceToken 匹配本地/服务端人员
-                                    // 2. 登录成功后关闭面板或进入下一步
-                                }
-                            }
-
-                            override fun onTips(msg: String) {
-                                activity.runOnUiThread {
-                                    sdkMessage = msg
-                                }
-                            }
-                        }
-                    )
-
-                    if (opened) {
-                        FaceSDKHandler.getInstance().startFaceDetect()
-                        sdkMessage = "请面向摄像头进行人脸识别"
-                    } else {
-                        sdkMessage = "摄像头打开失败"
-                    }
-                } else {
-                    sdkMessage = "SDK初始化失败: $message"
-                }
-            }
-        }
-    }
-
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(18.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "人脸识别登录",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0D47A1)
-                )
-
-                TextButton(onClick = onClose) {
-                    Text("关闭", fontSize = 18.sp)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF111827)),
-                contentAlignment = Alignment.Center
-            ) {
-                AndroidView(
-                    factory = { ctx ->
-                        TextureView(ctx).apply {
-                            textureViewRef = this
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = sdkMessage,
-                fontSize = 18.sp,
-                color = Color(0xFF455A64)
-            )
-        }
-    }
-}
-
-
-@Composable
-fun PremiumLoginDropdown(
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    onDismiss: () -> Unit,
-    onFaceLogin: () -> Unit,
-    onCardLogin: () -> Unit
-) {
-    Box {
-        Surface(
-            modifier = Modifier
-                .shadow(6.dp, RoundedCornerShape(18.dp))
-                .clip(RoundedCornerShape(18.dp))
-                .clickable { onToggle() },
-            shape = RoundedCornerShape(18.dp),
-            color = Color(0xFF0D47A1)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "登录",
-                    tint = Color.White,
-                    modifier = Modifier.size(26.dp)
-                )
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Text(
-                    text = "登录",
-                    color = Color.White,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "展开",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = onDismiss,
-            modifier = Modifier
-                .width(280.dp)
-                .background(Color.White)
-        ) {
-            DropdownMenuItem(
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = Color(0xFF1565C0),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "人脸识别登录",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF263238)
-                        )
-                    }
-                },
-                onClick = onFaceLogin
-            )
-
-            DropdownMenuItem(
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.AccountBox,
-                            contentDescription = null,
-                            tint = Color(0xFF1565C0),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "刷卡登录",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF263238)
-                        )
-                    }
-                },
-                onClick = onCardLogin
-            )
-        }
-    }
-}
-
-
-@Composable
-fun LoginDropdownItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    DropdownMenuItem(
-        text = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFEAF3FF)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = Color(0xFF1565C0),
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column {
-                    Text(
-                        text = title,
-                        fontSize = 23.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1F2D3D)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = subtitle,
-                        fontSize = 15.sp,
-                        color = Color(0xFF7A8A99)
-                    )
-                }
-            }
-        },
-        onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
-    )
-}
-
+// ==========================================
 @Composable
 fun EnterpriseHomeScreen(
     navController: NavHostController,
@@ -589,7 +214,7 @@ fun EnterpriseHomeScreen(
                     Spacer(modifier = Modifier.width(40.dp))
                     StatusIndicator("MQTT 通信", uiState.mqttStatus, uiState.mqttColor)
                     Spacer(modifier = Modifier.width(40.dp))
-                    Text(text = "版本: V1.0.4", fontSize = 22.sp, color = Color(0xFF90A4AE), fontWeight = FontWeight.Medium)
+                    Text(text = "版本: V1.0.0", fontSize = 22.sp, color = Color(0xFF90A4AE), fontWeight = FontWeight.Medium)
                 }
             }
         }
