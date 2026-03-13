@@ -1,5 +1,6 @@
 package com.company.deviceapp.ui.inspection
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.company.deviceapp.data.local.db.PersonnelDao
@@ -44,21 +45,28 @@ class InspectionViewModel @Inject constructor(
     val uiState: StateFlow<InspectionUiState> = _uiState
 
     fun onFaceRecognized(faceToken: String, deviceSn: String) {
+        Log.d("InspectionVM", ">>> 收到 SDK 返回的 Token: $faceToken")
         viewModelScope.launch {
-            val localUser = personnelDao.getPersonnelByFaceToken(faceToken)
-            if (localUser != null) {
-                _uiState.update {
-                    it.copy(
-                        currentUser = localUser,
-                        currentStep = InspectionStep.DOING_INSPECTION,
-                        errorMessage = null
-                    )
+            try {
+                val localUser = personnelDao.getPersonnelByFaceToken(faceToken)
+                if (localUser != null) {
+                    Log.d("InspectionVM", ">>> 本地库匹配成功: ${localUser.name} (ID: ${localUser.personnelId})")
+                    _uiState.update {
+                        it.copy(
+                            currentUser = localUser,
+                            currentStep = InspectionStep.DOING_INSPECTION,
+                            errorMessage = null
+                        )
+                    }
+                    fetchInspectionData(localUser.personnelId, deviceSn)
+                } else {
+                    Log.e("InspectionVM", ">>> 匹配失败: 本地数据库中没有找到 Token 为 [$faceToken] 的人员")
+                    _uiState.update {
+                        it.copy(errorMessage = "未在本地人员库中匹配到该人脸")
+                    }
                 }
-                fetchInspectionData(localUser.personnelId, deviceSn)
-            } else {
-                _uiState.update {
-                    it.copy(errorMessage = "未在本地人员库中匹配到该人脸")
-                }
+            } catch (e: Exception) {
+                Log.e("InspectionVM", ">>> 数据库查询异常", e)
             }
         }
     }
